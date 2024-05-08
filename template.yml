@@ -1,0 +1,56 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Globals:
+  Function:
+    Timeout: 30
+
+Resources:
+  GetBlog:
+    Type: AWS::Serverless::Function
+    FunctionName: get-blog
+    Properties:
+      CodeUri: dist/blog
+      Handler: index.getBlog
+      Runtime: nodejs16.x
+      Architectures:
+        - x86_64
+
+  ListBlog:
+    Type: AWS::Serverless::Function
+    FunctionName: list-blog
+    Properties:
+      CodeUri: dist/blog
+      Handler: index.listBlog
+      Runtime: nodejs16.x
+      Architectures:
+        - x86_64
+
+  PostUser:
+    Type: AWS::Serverless::Function
+    FunctionName: post-user
+    Properties:
+      CodeUri: dist/user
+      Handler: index.postUser
+      Runtime: nodejs16.x
+      Architectures:
+        - x86_64
+
+  # log group
+  GetBlogLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${GetBlog}'
+      RetentionInDays: 1
+
+  PostUserLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${PostUser}'
+      RetentionInDays: 1
+
+  ListBlogLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ListBlog}'
+      RetentionInDays: 1
