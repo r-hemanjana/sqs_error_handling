@@ -3,54 +3,108 @@ Transform: AWS::Serverless-2016-10-31
 
 Globals:
   Function:
+    Runtime: nodejs16.x
     Timeout: 30
+    Architectures:
+      - x86_64
 
 Resources:
-  GetBlog:
+  # Lambda functions
+  ProcessMessage:
     Type: AWS::Serverless::Function
-    FunctionName: get-blog
+    FunctionName: process-message
+    Properties:
+      CodeUri: dist/consumer
+      Environment:
+        Variables:
+          QUEUE_URL: !Ref DispatchQueue
+      Handler: index.processMessage
+      Role: !GetAtt AppRole.Arn
+
+  PushIntoQueue:
+    Type: AWS::Serverless::Function
+    FunctionName: push-into-queue
     Properties:
       CodeUri: dist/blog
-      Handler: index.getBlog
-      Runtime: nodejs16.x
-      Architectures:
-        - x86_64
+      Environment:
+        Variables:
+          QUEUE_URL: !Ref DispatchQueue
+      Handler: index.pushIntoQueue
+      Role: !GetAtt AppRole.Arn
 
-  ListBlog:
-    Type: AWS::Serverless::Function
-    FunctionName: list-blog
+  # Queue
+  DispatchQueue:
+    Type: AWS::SQS::Queue
     Properties:
-      CodeUri: dist/blog
-      Handler: index.listBlog
-      Runtime: nodejs16.x
-      Architectures:
-        - x86_64
+      QueueName: "test-dispatch-queue"
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt DeadLetterForDispatchQueue.Arn
+        maxReceiveCount: 3
+      VisibilityTimeout: 90
 
-  PostUser:
-    Type: AWS::Serverless::Function
-    FunctionName: post-user
+  DeadLetterForDispatchQueue:
+    Type: AWS::SQS::Queue
     Properties:
-      CodeUri: dist/user
-      Handler: index.postUser
-      Runtime: nodejs16.x
-      Architectures:
-        - x86_64
+      QueueName: "dead-letter-dispatch-queue"
+      MessageRetentionPeriod: 604800
+
+  # Mapping of function and queue
+  ProcessMessageEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      Enabled: true
+      BatchSize: 5
+      FunctionResponseTypes: ['ReportBatchItemFailures']
+      MaximumBatchingWindowInSeconds: 30
+      ScalingConfig:
+        MaximumConcurrency: 2
+      EventSourceArn: !GetAtt DispatchQueue.Arn
+      FunctionName: !GetAtt ProcessMessage.Arn
 
   # log group
-  GetBlogLogGroup:
+  ProcessMessageLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub '/aws/lambda/${GetBlog}'
+      LogGroupName: !Sub '/aws/lambda/${ProcessMessage}'
       RetentionInDays: 1
 
-  PostUserLogGroup:
+  PushIntoQueueLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub '/aws/lambda/${PostUser}'
+      LogGroupName: !Sub '/aws/lambda/${PushIntoQueue}'
       RetentionInDays: 1
 
-  ListBlogLogGroup:
-    Type: AWS::Logs::LogGroup
+  # IAM role
+  AppRole:
+    Type: AWS::IAM::Role
     Properties:
-      LogGroupName: !Sub '/aws/lambda/${ListBlog}'
-      RetentionInDays: 1
+      RoleName: 'app-role'
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: allow-sqs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+                - sqs:ReceiveMessage
+                - sqs:SendMessage
+                - sqs:DeleteMessage
+                - sqs:GetQueueAttributes
+                - sqs:ChangeMessageVisibility
+              Resource: !GetAtt DispatchQueue.Arn
+        - PolicyName: allow-lambda-logs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+              - logs:*
+              Resource: arn:aws:logs:*:*:*

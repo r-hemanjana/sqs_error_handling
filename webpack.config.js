@@ -28,7 +28,7 @@ module.exports = {
             type: 'commonjs'
         },
         path: path.join(__dirname, 'dist'),
-        filename: '[name]/index.js',
+        filename: '[name]/index.js', // it's actually [prefix]
     },
     module: {
         rules: [
